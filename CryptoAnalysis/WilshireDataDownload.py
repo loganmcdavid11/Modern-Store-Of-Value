@@ -1,8 +1,4 @@
-
 import pandas as pd
-import numpy as np
-import scipy
-import sklearn
 import requests
 import os
 from dotenv import load_dotenv
@@ -19,7 +15,8 @@ if not API_KEY:
 
 print("Successfully loaded the API key!")
 
-symbol = 'BITW'
+# Set the symbol for Wilshire 5000 (WFIVX is the Wilshire 5000 Index Fund)
+symbol = 'WFIVX'
 
 print(f"Requesting weekly data for {symbol} from Alpha Vantage...")
 
@@ -69,8 +66,6 @@ else:
     print(filtered_df.tail())
 
     # Save the data to a CSV
-    filename = f"{symbol}_weekly_data.csv"
+    filename = "WeeklyWilshire5000.csv"
     filtered_df.to_csv(filename)
     print(f"\nSuccess! Data saved to '{filename}'.")
-
-
