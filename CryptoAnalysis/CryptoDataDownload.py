@@ -43,7 +43,6 @@ else:
     
     # Convert the dates in the index to actual datetime objects
     df.index = pd.to_datetime(df.index)
-    df.index.name = 'Date'  # Name the index
     
     # Clean up the column names provided by the API
     df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
