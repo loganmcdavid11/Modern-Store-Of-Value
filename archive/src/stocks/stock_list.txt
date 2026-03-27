@@ -1,0 +1,17 @@
+Stock list to pull:
+
+Nvidia - NVDA
+Apple - AAPL
+Microsoft - MSFT
+AMD - AMD
+Amazon - AMZN
+S&P 500 - SPY
+Utilities XLU - XLU
+Wilshire 5000 - VTI
+Tesla - TSLA
+Dow Jones - DIA
+Nasdaq 100 - QQQ
+Lowes - LOW
+Home Depot - HD
+Walmart - WMT
+Johnson and Johnson - JNJ
