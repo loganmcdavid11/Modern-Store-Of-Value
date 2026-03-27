@@ -143,13 +143,25 @@ class StooqProcessor:
         results: dict[str, pd.DataFrame] = {}
         for ticker in normalized_tickers:
             daily_frame = self._get_daily_frame(ticker)
+            effective_end = self._resolve_effective_end(
+                daily_frame, requested_end=end_ts
+            )
             filtered_frame = self._filter_by_date_range(
-                daily_frame, start=start_ts, end=end_ts
+                daily_frame, start=start_ts, end=effective_end
             )
             if interval == DAILY_INTERVAL:
                 results[ticker] = filtered_frame.copy()
             else:
-                results[ticker] = self._to_monthly(filtered_frame)
+                results[ticker] = self._to_monthly(
+                    filtered_frame,
+                    effective_end=effective_end,
+                    relabel_final_period=(
+                        effective_end is not None
+                        and end_ts is not None
+                        and effective_end < end_ts
+                    )
+                    or (end_ts is None and effective_end is not None),
+                )
 
         return results
 
@@ -253,12 +265,39 @@ class StooqProcessor:
             filtered = filtered.loc[filtered.index <= end]
         return filtered
 
-    def _to_monthly(self, frame: pd.DataFrame) -> pd.DataFrame:
+    @staticmethod
+    def _resolve_effective_end(
+        frame: pd.DataFrame, *, requested_end: pd.Timestamp | None
+    ) -> pd.Timestamp | None:
+        if frame.empty:
+            return requested_end
+
+        latest_available = frame.index.max()
+        if requested_end is None:
+            return latest_available
+
+        return min(requested_end, latest_available)
+
+    def _to_monthly(
+        self,
+        frame: pd.DataFrame,
+        *,
+        effective_end: pd.Timestamp | None,
+        relabel_final_period: bool,
+    ) -> pd.DataFrame:
         if frame.empty:
             return frame.copy()
 
         monthly = frame.resample("ME").agg(_MONTHLY_AGGREGATIONS)
         monthly = monthly.dropna(how="all")
+
+        if relabel_final_period and effective_end is not None and not monthly.empty:
+            final_label = monthly.index[-1]
+            if effective_end.to_period("M") == final_label.to_period("M"):
+                new_index = monthly.index.to_list()
+                new_index[-1] = effective_end
+                monthly.index = pd.DatetimeIndex(new_index)
+
         monthly.index.name = "Date"
         return monthly.copy()
 

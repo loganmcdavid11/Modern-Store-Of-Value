@@ -103,17 +103,28 @@ class StooqProcessorSyntheticTests(unittest.TestCase):
     def test_download_monthly_aggregates_to_month_end_ohlcv(self) -> None:
         frame = self.processor.download("AAPL", interval="1mo")["AAPL"]
 
-        self.assertEqual(frame.index.tolist(), [pd.Timestamp("2024-01-31"), pd.Timestamp("2024-02-29")])
+        self.assertEqual(frame.index.tolist(), [pd.Timestamp("2024-01-31"), pd.Timestamp("2024-02-28")])
         self.assertEqual(frame.loc[pd.Timestamp("2024-01-31"), "Open"], 10)
         self.assertEqual(frame.loc[pd.Timestamp("2024-01-31"), "High"], 13)
         self.assertEqual(frame.loc[pd.Timestamp("2024-01-31"), "Low"], 9)
         self.assertEqual(frame.loc[pd.Timestamp("2024-01-31"), "Close"], 12)
         self.assertEqual(frame.loc[pd.Timestamp("2024-01-31"), "Volume"], 250)
         self.assertEqual(frame.loc[pd.Timestamp("2024-01-31"), "OpenInt"], 2)
-        self.assertEqual(frame.loc[pd.Timestamp("2024-02-29"), "Open"], 12)
-        self.assertEqual(frame.loc[pd.Timestamp("2024-02-29"), "Close"], 14)
-        self.assertEqual(frame.loc[pd.Timestamp("2024-02-29"), "Volume"], 450)
-        self.assertEqual(frame.loc[pd.Timestamp("2024-02-29"), "OpenInt"], 4)
+        self.assertEqual(frame.loc[pd.Timestamp("2024-02-28"), "Open"], 12)
+        self.assertEqual(frame.loc[pd.Timestamp("2024-02-28"), "Close"], 14)
+        self.assertEqual(frame.loc[pd.Timestamp("2024-02-28"), "Volume"], 450)
+        self.assertEqual(frame.loc[pd.Timestamp("2024-02-28"), "OpenInt"], 4)
+
+    def test_download_future_end_clamps_to_latest_available_date(self) -> None:
+        daily = self.processor.download(
+            "AAPL", start="2024-01-01", end="2024-12-31", interval="1d"
+        )["AAPL"]
+        monthly = self.processor.download(
+            "AAPL", start="2024-01-01", end="2024-12-31", interval="1mo"
+        )["AAPL"]
+
+        self.assertEqual(daily.index.max(), pd.Timestamp("2024-02-28"))
+        self.assertEqual(monthly.index[-1], pd.Timestamp("2024-02-28"))
 
     def test_download_deduplicates_tickers_while_preserving_first_seen_order(self) -> None:
         result = self.processor.download(["dba", "AAPL", "DBA"], interval="1d")
