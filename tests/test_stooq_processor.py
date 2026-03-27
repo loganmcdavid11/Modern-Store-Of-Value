@@ -130,6 +130,25 @@ class StooqProcessorSyntheticTests(unittest.TestCase):
         result = self.processor.download(["dba", "AAPL", "DBA"], interval="1d")
         self.assertEqual(list(result.keys()), ["DBA", "AAPL"])
 
+    def test_download_accepts_grouped_ticker_dictionary(self) -> None:
+        grouped = {
+            "Stocks": ["AAPL"],
+            "ETFs": ["DBA", "AAPL"],
+        }
+
+        result = self.processor.download(grouped, interval="1d")
+        self.assertEqual(list(result.keys()), ["AAPL", "DBA"])
+
+    def test_build_category_map_returns_first_seen_category_per_ticker(self) -> None:
+        grouped = {
+            "Stocks": ["AAPL"],
+            "ETFs": ["DBA", "AAPL"],
+        }
+
+        category_map = self.processor.build_category_map(grouped)
+        self.assertEqual(category_map["AAPL"], "Stocks")
+        self.assertEqual(category_map["DBA"], "ETFs")
+
     def test_download_raises_for_missing_tickers_before_loading(self) -> None:
         with self.assertRaises(KeyError) as exc:
             self.processor.download(["AAPL", "MISSING"], interval="1d")

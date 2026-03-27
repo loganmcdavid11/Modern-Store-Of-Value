@@ -3,13 +3,14 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal, Mapping, Sequence
 from zipfile import ZipFile
 
 import pandas as pd
 
 Exchange = Literal["nasdaq", "nyse", "nysemkt"]
 InstrumentType = Literal["stock", "etf"]
+TickerGroups = Mapping[str, Sequence[str]]
 
 STOOQ_ROOT = "data/daily/us/"
 STOOQ_MEMBER_SUFFIX = ".us.txt"
@@ -72,6 +73,19 @@ class StooqProcessor:
     def list_tickers(self) -> list[str]:
         return self._metadata_frame["symbol"].tolist()
 
+    def build_category_map(
+        self, tickers: str | Sequence[str] | TickerGroups
+    ) -> dict[str, str]:
+        if isinstance(tickers, Mapping):
+            category_map: dict[str, str] = {}
+            for category, symbols in tickers.items():
+                for symbol in symbols:
+                    normalized = self._normalize_ticker(symbol)
+                    category_map.setdefault(normalized, category)
+            return category_map
+
+        return {}
+
     def has_ticker(self, ticker: str) -> bool:
         return self._normalize_ticker(ticker) in self._catalog
 
@@ -118,7 +132,7 @@ class StooqProcessor:
 
     def download(
         self,
-        tickers: str | Sequence[str],
+        tickers: str | Sequence[str] | TickerGroups,
         *,
         start: str | pd.Timestamp | None = None,
         end: str | pd.Timestamp | None = None,
@@ -265,8 +279,8 @@ class StooqProcessor:
             filtered = filtered.loc[filtered.index <= end]
         return filtered
 
-    @staticmethod
     def _resolve_effective_end(
+        self,
         frame: pd.DataFrame, *, requested_end: pd.Timestamp | None
     ) -> pd.Timestamp | None:
         if frame.empty:
@@ -316,9 +330,14 @@ class StooqProcessor:
         return normalized
 
     def _normalize_ticker_sequence(
-        self, tickers: str | Sequence[str]
+        self, tickers: str | Sequence[str] | TickerGroups
     ) -> list[str]:
-        raw_tickers = [tickers] if isinstance(tickers, str) else list(tickers)
+        if isinstance(tickers, Mapping):
+            raw_tickers: list[str] = []
+            for symbols in tickers.values():
+                raw_tickers.extend(symbols)
+        else:
+            raw_tickers = [tickers] if isinstance(tickers, str) else list(tickers)
 
         normalized_tickers: list[str] = []
         seen: set[str] = set()
