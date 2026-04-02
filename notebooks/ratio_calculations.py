@@ -35,18 +35,15 @@ def _():
     from pathlib import Path
     import sys
 
-    # Custom Stooq data importer
-    repo_root = Path.cwd().parent
+    # Anchor to this file's location
+    repo_root = Path(__file__).resolve().parent.parent 
+
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-    # Import FRED API
-    import pandas_datareader.data as web
-
-    # Custom Stooq data processor
     from scripts.stooq_processor import StooqProcessor
 
-    return StooqProcessor, pd, repo_root, time, web
+    return StooqProcessor, pd, repo_root
 
 
 @app.cell(hide_code=True)
@@ -158,33 +155,6 @@ def _(StooqProcessor, end_date, pd, repo_root, start_date, stooq_tickers):
     return combined_data, ticker
 
 
-@app.cell
-def _(end_date, start_date, time, web):
-    # Attempt to fetch CPI data with retry logic
-    cpi_data = None
-    for attempt in range(5):
-        try:
-            print(f"Fetching CPI data from FRED (Attempt {attempt + 1}/5)...")
-            cpi_data = web.DataReader('CPIAUCSL', 'fred', start_date, end_date)
-            print("Success!")
-            break
-        except Exception as e:
-            print(f"Timeout or error. Retrying in 3 seconds...")
-            time.sleep(3)
-
-    if cpi_data is None:
-        raise Exception("Failed to fetch from FRED after 5 attempts. The server might be down.")
-
-    # Calculate total inflation and cumulative inflation over time
-    cpi_start_val = cpi_data['CPIAUCSL'].iloc[0]
-    cpi_end_val = cpi_data['CPIAUCSL'].iloc[-1]
-    total_inflation_pct = ((cpi_end_val - cpi_start_val) / cpi_start_val) * 100
-    cpi_data['Cumulative_Inflation_%'] = ((cpi_data['CPIAUCSL'] - cpi_start_val) / cpi_start_val) * 100
-
-    print(f"Total CPI Inflation ({start_date} to {end_date}): {total_inflation_pct:.2f}%\n")
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -211,18 +181,18 @@ def _(combined_data, display, pd, ticker):
     results = []
     for _ticker in monthly_data['Ticker'].unique():
         ticker_df = monthly_data[monthly_data['Ticker'] == ticker].sort_values('Date')
-    
+
         # No data in ticker condition
         if ticker_df.empty:
             continue
-        
+
         # Start and end price for total return calculation
         start_price = ticker_df.iloc[0]['Close']
         end_price = ticker_df.iloc[-1]['Close']
-    
+
         # Calculate total return and adjust for inflation
         asset_return_pct = ((end_price - start_price) / start_price) * 100
-    
+
         # Append results
         results.append({
             'Category': ticker_df.iloc[0]['Category'],
@@ -237,8 +207,6 @@ def _(combined_data, display, pd, ticker):
 
     display(formatted_df)
     formatted_df.to_csv('../data/monthly_returns.csv', index=False)
-
-
     return
 
 
