@@ -44,7 +44,7 @@ def _(mo):
     mo.md(r"""
     ### 2. Pipeline Configuration
     **Purpose:** Define the time horizon and the specific universe of assets we are analyzing.
-    **Implementation:** Sets the 2021-2026 window. Critically, it includes `3MUSY.B` (the 3-month Treasury yield) to act as our dynamic macroeconomic baseline, and `VTI` as our market correlation baseline.
+    **Implementation:** Sets the 2021-2026 window. Then, it builds a categorized list of all assets being investigated
     """)
     return
 
@@ -70,6 +70,7 @@ def _(mo):
     mo.md(r"""
     ### 3. Data Ingestion
     **Purpose:** Extract the historical data from the local Stooq database.
+
     **Implementation:** Flattens the dictionary to create a category map, checks for valid tickers in the ZIP file, and downloads the daily data into a dictionary of DataFrames.
     """)
     return
@@ -128,7 +129,7 @@ def _(category_map, pd, raw_data):
 def _(mo):
     mo.md(r"""
     ### 5. Ingest & Format Macroeconomic Baseline (T-Bills)
-    **Purpose:** Load the offline risk-free rate data and prepare it for a date-agnostic merge.
+    **Purpose:** Load the offline FRED risk-free rate data and prepare it for a date-agnostic merge.
     **Implementation:** Reads the CSV, converts the date into a unified `YearMonth` period, and transforms the annualized whole-number yield into a monthly decimal.
     """)
     return
@@ -137,7 +138,7 @@ def _(mo):
 @app.cell
 def _(pd, repo_root):
     # Load the CSV
-    tbill_path = repo_root / "data" / "tb3ms.csv"
+    tbill_path = repo_root / "data" / "TB3MS.csv"
     tbill_data = pd.read_csv(tbill_path)
 
     # Standardize column names
@@ -145,7 +146,7 @@ def _(pd, repo_root):
 
     # Force numeric (FRED sometimes puts '.' for missing data)
     tbill_data['Yield'] = pd.to_numeric(tbill_data['Yield'], errors='coerce')
-    
+
     # Forward-fill any missing months
     tbill_data['Yield'] = tbill_data['Yield'].ffill()
 
@@ -158,8 +159,7 @@ def _(pd, repo_root):
 
     # Isolate just the columns we need for the merge
     clean_tbill = tbill_data[['YearMonth', 'Monthly_RF_Rate']]
-
-    return clean_tbill,
+    return (clean_tbill,)
 
 
 @app.cell(hide_code=True)
@@ -173,17 +173,17 @@ def _(mo):
 
 
 @app.cell
-def _(combined_data, clean_tbill, np, pd, repo_root):
+def _(clean_tbill, combined_data, np, pd, repo_root):
     # 1. Prepare Stooq Data
     monthly_data = combined_data.copy()
     monthly_data['Date'] = pd.to_datetime(monthly_data['Date'])
-    
+
     # Create the unified YearMonth matching key
     monthly_data['YearMonth'] = monthly_data['Date'].dt.to_period('M')
 
     # Sort chronologically for accurate pct_change
     monthly_data = monthly_data.sort_values(['Ticker', 'Date'])
-    
+
     # Calculate month-over-month returns
     monthly_data['Monthly_Return'] = monthly_data.groupby('Ticker')['Close'].pct_change()
 
@@ -205,16 +205,16 @@ def _(combined_data, clean_tbill, np, pd, repo_root):
     def calculate_metrics(group):
         avg_monthly_return = group['Monthly_Return'].mean()
         avg_excess_return = group['Excess_Return'].mean()
-        
+
         std_excess = group['Excess_Return'].std()
         std_downside = group['Downside_Return'].std()
-        
+
         # Prevent zero-division errors
         sharpe = (avg_excess_return / std_excess) * np.sqrt(12) if std_excess > 0 else np.nan
         sortino = (avg_excess_return / std_downside) * np.sqrt(12) if std_downside > 0 else np.nan
-        
+
         vti_corr = group['Monthly_Return'].corr(group['VTI_Return'])
-        
+
         return pd.Series({
             'Annualized_Return_%': (avg_monthly_return * 12) * 100,
             'Sharpe_Ratio': sharpe,
@@ -229,8 +229,7 @@ def _(combined_data, clean_tbill, np, pd, repo_root):
     # 7. Export
     print(results_df)
     results_df.to_csv(repo_root / 'data' / 'risk_adjusted_metrics.csv', index=False)
-
-    return clean_monthly_data, results_df
+    return
 
 
 if __name__ == "__main__":
