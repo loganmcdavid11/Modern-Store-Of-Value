@@ -435,6 +435,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "scikit-learn" },
     { name = "scipy" },
+    { name = "scripts" },
     { name = "seaborn" },
     { name = "statsmodels" },
     { name = "yfinance" },
@@ -459,6 +460,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "scipy", specifier = ">=1.17.1" },
+    { name = "scripts", specifier = ">=3.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "statsmodels", specifier = ">=0.14.6" },
     { name = "yfinance", specifier = ">=1.2.0" },
@@ -2648,6 +2650,18 @@ wheels = [
 ]
 
 [[package]]
+name = "scripts"
+version = "3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "stua" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/41/36/bb5b0b1ec225e87d800986e6524395eb302c15c0f9991cab4d17bae7b5a0/scripts-3.0.tar.gz", hash = "sha256:dbdba267cf9e4b336d3cac2eb862244abb2166c01cc95db704bd26e2ce8a75d3", size = 10014, upload-time = "2023-12-06T17:58:28.353Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/41/49/1825670202a0619ac42c61147c0e5361afb84b866c279144dbad5f4a8267/scripts-3.0-py3-none-any.whl", hash = "sha256:ca16a259c79c6bfc9a0431dfdffa6c4001262db2011700ebecf10254e43c6ab7", size = 18965, upload-time = "2023-12-06T17:58:26.167Z" },
+]
+
+[[package]]
 name = "seaborn"
 version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2761,6 +2775,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/34/0e/2408735aca9e764643196212f9069912100151414dd617d39ffc72d77eee/statsmodels-0.14.6-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3414e40c073d725007a6603a18247ab7af3467e1af4a5e5a24e4c27bc26673b4", size = 10337587, upload-time = "2025-12-05T23:13:37.597Z" },
     { url = "https://files.pythonhosted.org/packages/0f/36/4d44f7035ab3c0b2b6a4c4ebb98dedf36246ccbc1b3e2f51ebcd7ac83abb/statsmodels-0.14.6-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:a518d3f9889ef920116f9fa56d0338069e110f823926356946dae83bc9e33e19", size = 10363350, upload-time = "2025-12-05T23:13:53.08Z" },
     { url = "https://files.pythonhosted.org/packages/26/33/f1652d0c59fa51de18492ee2345b65372550501ad061daa38f950be390b6/statsmodels-0.14.6-cp314-cp314-win_amd64.whl", hash = "sha256:151b73e29f01fe619dbce7f66d61a356e9d1fe5e906529b78807df9189c37721", size = 9588010, upload-time = "2025-12-05T23:14:07.28Z" },
+]
+
+[[package]]
+name = "stua"
+version = "0.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1f/8b/0e841aa2d0594d6c25d1940f37e609102f04e34cc53f42dd4b28fc99a159/stua-0.3.tar.gz", hash = "sha256:9cfa1d9aacb5799d28cef0b72bcc3dff22a93161126cf613637a269c33dc796a", size = 5496, upload-time = "2023-12-06T17:46:44.475Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d4/b9/0a8e7e66bf02ec3c7f4f5be0765cba0dec6f6acd074c956eb2b49bf33f39/stua-0.3-py3-none-any.whl", hash = "sha256:a37ad62d45543744d69266c68030d55e05d97a35c7d707ffe11df676d315f227", size = 8350, upload-time = "2023-12-06T17:46:42.537Z" },
 ]
 
 [[package]]
