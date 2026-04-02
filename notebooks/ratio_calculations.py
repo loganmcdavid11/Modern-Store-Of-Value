@@ -127,42 +127,39 @@ def _(category_map, pd, raw_data):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### 5. Resampling & Dynamic Baseline Generation
-    **Purpose:** Convert daily noise into standardized monthly periods and calculate the specific macroeconomic hurdles for each month.
-
-    **Implementation:** 1. Resamples all equities to the last closing price of the month.
-    2. Calculates the month-over-month percentage return using `pct_change()`.
-    3. Isolates the Treasury yield (`3MUSY.B`), converts the whole number into a monthly decimal, and maps that exact risk-free rate to every asset's row for that specific month.
+    ### 5. Ingest & Format Macroeconomic Baseline (T-Bills)
+    **Purpose:** Load the offline risk-free rate data and prepare it for a date-agnostic merge.
+    **Implementation:** Reads the CSV, converts the date into a unified `YearMonth` period, and transforms the annualized whole-number yield into a monthly decimal.
     """)
     return
 
 
 @app.cell
-def _(combined_data):
-    # 1. Resample to Monthly
-    monthly_data = (
-        combined_data.set_index('Date')
-        .groupby(['Ticker', 'Category'])
-        .resample('MS')['Close']
-        .last()
-        .reset_index()
-    )
+def _(pd, repo_root):
+    # Load the CSV
+    tbill_path = repo_root / "data" / "tb3ms.csv"
+    tbill_data = pd.read_csv(tbill_path)
 
-    # 2. Vectorized Monthly Returns
-    monthly_data = monthly_data.sort_values(['Ticker', 'Date'])
-    monthly_data['Monthly_Return'] = monthly_data.groupby('Ticker')['Close'].pct_change()
+    # Standardize column names
+    tbill_data = tbill_data.rename(columns={'DATE': 'Date', 'TB3MS': 'Yield'})
 
-    # 3. Dynamic Risk-Free Rate Processing
-    tbill_data = monthly_data[monthly_data['Ticker'] == '3MUSY.B'].copy()
+    # Force numeric (FRED sometimes puts '.' for missing data)
+    tbill_data['Yield'] = pd.to_numeric(tbill_data['Yield'], errors='coerce')
+    
+    # Forward-fill any missing months
+    tbill_data['Yield'] = tbill_data['Yield'].ffill()
 
-    # Convert Stooq's yield (e.g., 5.0) to a monthly decimal (0.00416)
-    tbill_data['Monthly_RF_Rate'] = (tbill_data['Close'] / 100) / 12
-    rf_mapping = tbill_data.set_index('Date')['Monthly_RF_Rate']
+    # Convert yield to monthly decimal (e.g., 5.0 -> 0.00416)
+    tbill_data['Monthly_RF_Rate'] = (tbill_data['Yield'] / 100) / 12
 
-    # Map the rate across the dataset and remove the T-Bill from the equity pool
-    monthly_data['Monthly_RF_Rate'] = monthly_data['Date'].map(rf_mapping)
-    monthly_data = monthly_data[monthly_data['Category'] != 'Treasury Yields']
-    return (monthly_data,)
+    # Create the unified YearMonth matching key
+    tbill_data['Date'] = pd.to_datetime(tbill_data['Date'])
+    tbill_data['YearMonth'] = tbill_data['Date'].dt.to_period('M')
+
+    # Isolate just the columns we need for the merge
+    clean_tbill = tbill_data[['YearMonth', 'Monthly_RF_Rate']]
+
+    return clean_tbill,
 
 
 @app.cell(hide_code=True)
@@ -170,38 +167,54 @@ def _(mo):
     mo.md(r"""
     ### 6. The Calculation Engine (Matrix Math)
     **Purpose:** Calculate the advanced risk-adjusted metrics across the entire dataset simultaneously.
-    **Implementation:** Calculates excess returns and isolates downside volatility. It extracts VTI's returns, joins them to the master matrix, and uses a `groupby.apply()` function to compute the Annualized Return, Sharpe, Sortino, and Correlation ratios. The final output is sorted by Sortino Ratio to highlight the best safe-haven assets.
+    **Implementation:** Sorts the pre-aggregated monthly data, merges the dynamic risk-free rate using the `YearMonth` key, calculates excess and downside returns, and applies the final matrix math to generate the metrics.
     """)
     return
 
 
 @app.cell
-def _(np, pd, repo_root):
-    # 1. Calculate Excess and Downside Returns
+def _(combined_data, clean_tbill, np, pd, repo_root):
+    # 1. Prepare Stooq Data
+    monthly_data = combined_data.copy()
+    monthly_data['Date'] = pd.to_datetime(monthly_data['Date'])
+    
+    # Create the unified YearMonth matching key
+    monthly_data['YearMonth'] = monthly_data['Date'].dt.to_period('M')
+
+    # Sort chronologically for accurate pct_change
+    monthly_data = monthly_data.sort_values(['Ticker', 'Date'])
+    
+    # Calculate month-over-month returns
+    monthly_data['Monthly_Return'] = monthly_data.groupby('Ticker')['Close'].pct_change()
+
+    # 2. Merge the Risk-Free Rate
+    monthly_data = pd.merge(monthly_data, clean_tbill, on='YearMonth', how='left')
+
+    # 3. Calculate Excess and Downside Returns
     monthly_data['Excess_Return'] = monthly_data['Monthly_Return'] - monthly_data['Monthly_RF_Rate']
     monthly_data['Downside_Return'] = np.minimum(monthly_data['Excess_Return'], 0)
 
-    # 2. Extract VTI Baseline for Correlation
-    vti_returns = monthly_data[monthly_data['Ticker'] == 'VTI'].set_index('Date')['Monthly_Return'].rename('VTI_Return')
-    monthly_data = monthly_data.join(vti_returns, on='Date')
+    # 4. Extract VTI Baseline for Correlation
+    vti_returns = monthly_data[monthly_data['Ticker'] == 'VTI'].set_index('YearMonth')['Monthly_Return'].rename('VTI_Return')
+    monthly_data = monthly_data.join(vti_returns, on='YearMonth')
 
     # Drop the first NaN month caused by pct_change
     clean_monthly_data = monthly_data.dropna(subset=['Monthly_Return']).copy()
 
-    # 3. Vectorized Aggregation Function
+    # 5. Vectorized Aggregation Function
     def calculate_metrics(group):
         avg_monthly_return = group['Monthly_Return'].mean()
         avg_excess_return = group['Excess_Return'].mean()
-
+        
         std_excess = group['Excess_Return'].std()
         std_downside = group['Downside_Return'].std()
-
+        
         # Prevent zero-division errors
         sharpe = (avg_excess_return / std_excess) * np.sqrt(12) if std_excess > 0 else np.nan
         sortino = (avg_excess_return / std_downside) * np.sqrt(12) if std_downside > 0 else np.nan
-
+        
         vti_corr = group['Monthly_Return'].corr(group['VTI_Return'])
-
+        
         return pd.Series({
             'Annualized_Return_%': (avg_monthly_return * 12) * 100,
             'Sharpe_Ratio': sharpe,
@@ -209,14 +222,15 @@ def _(np, pd, repo_root):
             'VTI_Correlation': vti_corr
         })
 
-    # 4. Apply Math and Sort
+    # 6. Apply Math and Sort
     results_df = clean_monthly_data.groupby(['Ticker', 'Category']).apply(calculate_metrics).reset_index()
     results_df = results_df.sort_values(by='Sortino_Ratio', ascending=False).round(3)
 
-    # 5. Export
+    # 7. Export
     print(results_df)
     results_df.to_csv(repo_root / 'data' / 'risk_adjusted_metrics.csv', index=False)
-    return (monthly_data,)
+
+    return clean_monthly_data, results_df
 
 
 if __name__ == "__main__":
