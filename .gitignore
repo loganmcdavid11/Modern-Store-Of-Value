@@ -51,3 +51,4 @@ data/*
 # Plots / generated outputs
 plots/*
 !plots/.gitkeep
+notebooks/__marimo__/session/taylor_marimo.py.json
