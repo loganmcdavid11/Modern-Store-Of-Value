@@ -34,14 +34,16 @@ def _():
     from pathlib import Path
     import sys
 
-    # Custom Stooq data importer
-    repo_root = Path.cwd().parent
+    # Custom Stooq data importer: Anchor to this file's location
+    # __file__ is notebooks/taylor_marimo.py
+    repo_root = Path(__file__).resolve().parent.parent 
+
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
     from scripts.stooq_processor import StooqProcessor
 
-    return StooqProcessor, pd, repo_root
+    return StooqProcessor, go, pd, px, repo_root
 
 
 @app.cell(hide_code=True)
@@ -109,7 +111,65 @@ def _(StooqProcessor, end_date, pd, repo_root, start_date, stooq_tickers):
     combined_data = pd.concat(data.values()).reset_index()
 
     # combined_data.head()
-    data["AAPL"].tail()
+    # data["AAPL"].tail()
+    return
+
+
+@app.cell
+def _(cpi_data, end_date, go, monthly_data, px, start_date):
+    """
+    Function: calc_cumulative_return
+    Purpose: Calculate cumulative returns over time for each asset, starting from the first month in the dataset.
+    """
+    def calc_cumulative_return(group):
+        group = group.sort_values('Date')
+        start_price = group['Close'].iloc[0]
+        group['Cumulative_Return_%'] = ((group['Close'] - start_price) / start_price) * 100
+        return group
+
+    # Cumulate returns for each asset
+    cumulative_data = monthly_data.groupby('Ticker', group_keys=False).apply(calc_cumulative_return)
+
+    # Plot
+    fig = px.line(
+        cumulative_data,
+        x='Date',
+        y='Cumulative_Return_%',
+        color='Ticker',
+        hover_data=['Category'],
+        title=f'Asset Cumulative Returns vs. US Inflation ({start_date} to {end_date})',
+        labels={'Cumulative_Return_%': 'Cumulative Return (%)', 'Date': 'Date'}
+    )
+
+    fig.update_traces(visible='legendonly')
+
+    inflation_trace = go.Scatter(
+        x=cpi_data.index,
+        y=cpi_data['Cumulative_Inflation_%'],
+        name='Cumulative US Inflation (Baseline)',
+        fill='tozeroy',  
+        mode='lines',
+        line=dict(color='rgba(64, 64, 64, 0.9)', width=4, dash='dot'), 
+        fillcolor='rgba(128, 128, 128, 0.25)', 
+        hoverinfo='x+y+name'
+    )
+    fig.add_trace(inflation_trace)
+
+    fig.data = (fig.data[-1],) + fig.data[:-1]
+
+    fig.update_layout(
+        height=800,
+        width=1400,
+        template="plotly_white",
+        hovermode="closest",
+        legend=dict(
+            title="<b>Assets</b><br>(Double-click to isolate)",
+            itemsizing="constant"
+        )
+    )
+
+    fig.show()
+    fig.write_html("../plots/inflation_adjusted_returns.html")
     return
 
 
