@@ -4,111 +4,79 @@ __generated_with = "0.22.0"
 app = marimo.App()
 
 
-@app.cell
-def _():
-    import marimo as mo
-
-    return (mo,)
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Imports & Downloads
+    ### 1. Environment Setup & Imports
+    **Purpose:** Initialize the necessary data manipulation libraries and establish the file path to the project root.
+
+    **Implementation:** Imports `pandas` and `numpy` for vectorized math, and configures the system path so the custom `StooqProcessor` can be imported reliably regardless of where the notebook is executed.
     """)
     return
 
 
 @app.cell
 def _():
-    # Data manipulation tools
     import pandas as pd
-    import datetime
-    import time
-
-    # Visualization tools
-    import matplotlib.pyplot as plt
-    import plotly.express as px
-    import plotly.graph_objects as go
-
-    # OS tools
+    import numpy as np
     from pathlib import Path
     import sys
+    import marimo as mo
 
     # Detect environment to reliably find the project root
     if '__file__' in globals():
-        # We are in Marimo or a standard Python script
         current_dir = Path(__file__).resolve().parent
     else:
-        # We are in a Jupyter Notebook (.ipynb)
         current_dir = Path.cwd().resolve()
 
-    # Step up one level to the main project folder
     repo_root = current_dir.parent 
 
-    # Add to path and import
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
     from scripts.stooq_processor import StooqProcessor
 
-    return StooqProcessor, pd, repo_root
+    return StooqProcessor, mo, np, pd, repo_root
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Downloads
+    ### 2. Pipeline Configuration
+    **Purpose:** Define the time horizon and the specific universe of assets we are analyzing.
+    **Implementation:** Sets the 2021-2026 window. Critically, it includes `3MUSY.B` (the 3-month Treasury yield) to act as our dynamic macroeconomic baseline, and `VTI` as our market correlation baseline.
     """)
     return
 
 
 @app.cell
 def _():
-    stooq_tickers = {
-        "Crypto ETFs": [
-            "BITW",  # Bitwise 10 Crypto Index
-            "IBIT",  # iShares Bitcoin Trust (Replaces BTC-USD)
-            "ETHA"   # iShares Ethereum Trust (Replaces ETH-USD)
-        ], 
-
-        "Individual Stocks": [
-            "NVDA", "AAPL", "MSFT", "AMD", "AMZN", "TSLA", "WMT", "LOW", "HD", "JNJ"
-        ],
-
-        "Sector ETFs": [
-            "XLU"    # Utilities Select Sector SPDR Fund
-        ],
-
-        "Broad Market ETFs": [
-            "SPY",   # S&P 500
-            "VTI",   # Total US Market (replaces Wilshire 5000)
-        ],
-
-        "Commodity ETFs (Metals)": [
-            "GLD",   # Gold (Baseline)
-            "SLV",   # Silver
-            "PPLT",  # Platinum
-            "PALL"   # Palladium
-        ],
-
-        "Commodity ETFs (Agriculture)": [
-            "WEAT",  # Wheat
-            "SOYB",  # Soybeans
-            "DBA"    # Broad Agriculture
-        ]
-    }
-
     start_date = "2021-01-01"
     end_date = "2026-03-31"
+
+    stooq_tickers = {
+        "Crypto ETFs": ["BITW", "IBIT", "ETHA"], 
+        "Individual Stocks": ["NVDA", "AAPL", "MSFT", "AMD", "AMZN", "TSLA", "WMT", "LOW", "HD", "JNJ"],
+        "Sector ETFs": ["XLU"],
+        "Broad Market ETFs": ["SPY", "VTI"],
+        "Commodity ETFs (Metals)": ["GLD", "SLV", "PPLT", "PALL"],
+        "Commodity ETFs (Agriculture)": ["WEAT", "SOYB", "DBA"]
+    }
     return end_date, start_date, stooq_tickers
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 3. Data Ingestion
+    **Purpose:** Extract the historical data from the local Stooq database.
+    **Implementation:** Flattens the dictionary to create a category map, checks for valid tickers in the ZIP file, and downloads the daily data into a dictionary of DataFrames.
+    """)
+    return
+
+
 @app.cell
-def _(StooqProcessor, end_date, pd, repo_root, start_date, stooq_tickers):
-    # -----------------------------
-    # Flatten tickers + category map
-    # -----------------------------
+def _(StooqProcessor, end_date, repo_root, start_date, stooq_tickers):
     category_map = {
         ticker: category
         for category, tickers in stooq_tickers.items()
@@ -117,67 +85,61 @@ def _(StooqProcessor, end_date, pd, repo_root, start_date, stooq_tickers):
 
     flat_tickers = list(category_map.keys())
 
-
-    # -----------------------------
-    # Download data
-    # -----------------------------
     with StooqProcessor(repo_root / "data" / "d_us_txt.zip") as processor:
+        valid_tickers = [t for t in flat_tickers if processor.has_ticker(t)]
 
-        # Stores valid tickers
-        valid_tickers = [
-            t for t in flat_tickers
-            if processor.has_ticker(t)
-        ]
-
-        # Prints tickers that were not valid
         missing = sorted(set(flat_tickers) - set(valid_tickers))
         if missing:
             print("Skipping missing tickers:", missing)
 
-        data = processor.download(
+        raw_data = processor.download(
             valid_tickers,
             start=start_date,
             end=end_date,
         )
+    return category_map, raw_data
 
 
-    # -----------------------------
-    # Attach metadata
-    # -----------------------------
-    for ticker, frame in data.items():
-        data[ticker] = frame.assign(
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 4. Data Formatting & Combination
+    **Purpose:** Merge the disparate ticker DataFrames into a single, unified matrix.
+
+    **Implementation:** Loops through the downloaded dictionary, attaches the `Ticker` and `Category` metadata to each row, and concatenates them into `combined_data`. Finally, it converts the Date column to a proper datetime format.
+    """)
+    return
+
+
+@app.cell
+def _(category_map, pd, raw_data):
+    for ticker, frame in raw_data.items():
+        raw_data[ticker] = frame.assign(
             Ticker=ticker,
             Category=category_map[ticker],
         )
 
-
-    # -----------------------------
-    # Combine dataset
-    # -----------------------------
-    combined_data = pd.concat(data.values()).reset_index()
-
-    # data['AAPL'].tail()
-    # data["BITW"]
-    # combined_data[combined_data['Ticker'] == 'BITW']
-    print(combined_data)
-    # combined_data
+    combined_data = pd.concat(raw_data.values()).reset_index()
+    combined_data['Date'] = pd.to_datetime(combined_data['Date'])
     return (combined_data,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Prepare Monthly Data & Calculate Monthly Returns
+    ### 5. Resampling & Dynamic Baseline Generation
+    **Purpose:** Convert daily noise into standardized monthly periods and calculate the specific macroeconomic hurdles for each month.
+
+    **Implementation:** 1. Resamples all equities to the last closing price of the month.
+    2. Calculates the month-over-month percentage return using `pct_change()`.
+    3. Isolates the Treasury yield (`3MUSY.B`), converts the whole number into a monthly decimal, and maps that exact risk-free rate to every asset's row for that specific month.
     """)
     return
 
 
 @app.cell
-def _(combined_data, pd, repo_root):
-    # Prepare monthly data & calculate static returns
-    combined_data['Date'] = pd.to_datetime(combined_data['Date'])
-
-    # Resample monthly frequency, taking last closing price of each month
+def _(combined_data):
+    # 1. Resample to Monthly
     monthly_data = (
         combined_data.set_index('Date')
         .groupby(['Ticker', 'Category'])
@@ -186,37 +148,75 @@ def _(combined_data, pd, repo_root):
         .reset_index()
     )
 
-    # Calculate total returns and inflation-adjusted returns for each asset
-    results = []
-    for _ticker in monthly_data['Ticker'].unique():
-        ticker_df = monthly_data[monthly_data['Ticker'] == _ticker].sort_values('Date')
+    # 2. Vectorized Monthly Returns
+    monthly_data = monthly_data.sort_values(['Ticker', 'Date'])
+    monthly_data['Monthly_Return'] = monthly_data.groupby('Ticker')['Close'].pct_change()
 
-        # No data in ticker condition
-        if ticker_df.empty:
-            continue
+    # 3. Dynamic Risk-Free Rate Processing
+    tbill_data = monthly_data[monthly_data['Ticker'] == '3MUSY.B'].copy()
 
-        # Start and end price for total return calculation
-        start_price = ticker_df.iloc[0]['Close']
-        end_price = ticker_df.iloc[-1]['Close']
+    # Convert Stooq's yield (e.g., 5.0) to a monthly decimal (0.00416)
+    tbill_data['Monthly_RF_Rate'] = (tbill_data['Close'] / 100) / 12
+    rf_mapping = tbill_data.set_index('Date')['Monthly_RF_Rate']
 
-        # Calculate total return and adjust for inflation
-        asset_return_pct = ((end_price - start_price) / start_price) * 100
+    # Map the rate across the dataset and remove the T-Bill from the equity pool
+    monthly_data['Monthly_RF_Rate'] = monthly_data['Date'].map(rf_mapping)
+    monthly_data = monthly_data[monthly_data['Category'] != 'Treasury Yields']
+    return (monthly_data,)
 
-        # Append results
-        results.append({
-            'Category': ticker_df.iloc[0]['Category'],
-            'Ticker': _ticker,
-            'Total_Return_%': asset_return_pct
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 6. The Calculation Engine (Matrix Math)
+    **Purpose:** Calculate the advanced risk-adjusted metrics across the entire dataset simultaneously.
+    **Implementation:** Calculates excess returns and isolates downside volatility. It extracts VTI's returns, joins them to the master matrix, and uses a `groupby.apply()` function to compute the Annualized Return, Sharpe, Sortino, and Correlation ratios. The final output is sorted by Sortino Ratio to highlight the best safe-haven assets.
+    """)
+    return
+
+
+@app.cell
+def _(np, pd, repo_root):
+    # 1. Calculate Excess and Downside Returns
+    monthly_data['Excess_Return'] = monthly_data['Monthly_Return'] - monthly_data['Monthly_RF_Rate']
+    monthly_data['Downside_Return'] = np.minimum(monthly_data['Excess_Return'], 0)
+
+    # 2. Extract VTI Baseline for Correlation
+    vti_returns = monthly_data[monthly_data['Ticker'] == 'VTI'].set_index('Date')['Monthly_Return'].rename('VTI_Return')
+    monthly_data = monthly_data.join(vti_returns, on='Date')
+
+    # Drop the first NaN month caused by pct_change
+    clean_monthly_data = monthly_data.dropna(subset=['Monthly_Return']).copy()
+
+    # 3. Vectorized Aggregation Function
+    def calculate_metrics(group):
+        avg_monthly_return = group['Monthly_Return'].mean()
+        avg_excess_return = group['Excess_Return'].mean()
+
+        std_excess = group['Excess_Return'].std()
+        std_downside = group['Downside_Return'].std()
+
+        # Prevent zero-division errors
+        sharpe = (avg_excess_return / std_excess) * np.sqrt(12) if std_excess > 0 else np.nan
+        sortino = (avg_excess_return / std_downside) * np.sqrt(12) if std_downside > 0 else np.nan
+
+        vti_corr = group['Monthly_Return'].corr(group['VTI_Return'])
+
+        return pd.Series({
+            'Annualized_Return_%': (avg_monthly_return * 12) * 100,
+            'Sharpe_Ratio': sharpe,
+            'Sortino_Ratio': sortino,
+            'VTI_Correlation': vti_corr
         })
 
-    # Format and display the table
-    returns_df = pd.DataFrame(results).sort_values(by='Total_Return_%', ascending=False)
-    formatted_df = returns_df.copy()
-    formatted_df['Total_Return_%'] = formatted_df['Total_Return_%'].round(2).astype(str) + '%'
+    # 4. Apply Math and Sort
+    results_df = clean_monthly_data.groupby(['Ticker', 'Category']).apply(calculate_metrics).reset_index()
+    results_df = results_df.sort_values(by='Sortino_Ratio', ascending=False).round(3)
 
-    print(formatted_df)
-    formatted_df.to_csv(repo_root / 'data' / 'monthly_returns.csv', index=False)
-    return
+    # 5. Export
+    print(results_df)
+    results_df.to_csv(repo_root / 'data' / 'risk_adjusted_metrics.csv', index=False)
+    return (monthly_data,)
 
 
 if __name__ == "__main__":
