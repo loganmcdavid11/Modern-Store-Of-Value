@@ -35,9 +35,18 @@ def _():
     from pathlib import Path
     import sys
 
-    # Anchor to this file's location
-    repo_root = Path(__file__).resolve().parent.parent 
+    # Detect environment to reliably find the project root
+    if '__file__' in globals():
+        # We are in Marimo or a standard Python script
+        current_dir = Path(__file__).resolve().parent
+    else:
+        # We are in a Jupyter Notebook (.ipynb)
+        current_dir = Path.cwd().resolve()
 
+    # Step up one level to the main project folder
+    repo_root = current_dir.parent 
+
+    # Add to path and import
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
@@ -152,7 +161,7 @@ def _(StooqProcessor, end_date, pd, repo_root, start_date, stooq_tickers):
     # combined_data[combined_data['Ticker'] == 'BITW']
     print(combined_data)
     # combined_data
-    return combined_data, ticker
+    return (combined_data,)
 
 
 @app.cell(hide_code=True)
@@ -164,7 +173,7 @@ def _(mo):
 
 
 @app.cell
-def _(combined_data, display, pd, ticker):
+def _(combined_data, pd, repo_root):
     # Prepare monthly data & calculate static returns
     combined_data['Date'] = pd.to_datetime(combined_data['Date'])
 
@@ -180,7 +189,7 @@ def _(combined_data, display, pd, ticker):
     # Calculate total returns and inflation-adjusted returns for each asset
     results = []
     for _ticker in monthly_data['Ticker'].unique():
-        ticker_df = monthly_data[monthly_data['Ticker'] == ticker].sort_values('Date')
+        ticker_df = monthly_data[monthly_data['Ticker'] == _ticker].sort_values('Date')
 
         # No data in ticker condition
         if ticker_df.empty:
@@ -196,17 +205,17 @@ def _(combined_data, display, pd, ticker):
         # Append results
         results.append({
             'Category': ticker_df.iloc[0]['Category'],
-            'Ticker': ticker,
+            'Ticker': _ticker,
             'Total_Return_%': asset_return_pct
         })
 
     # Format and display the table
-    returns_df = pd.DataFrame(results).sort_values(by='Inflation_Adjusted_Return_%', ascending=False)
+    returns_df = pd.DataFrame(results).sort_values(by='Total_Return_%', ascending=False)
     formatted_df = returns_df.copy()
     formatted_df['Total_Return_%'] = formatted_df['Total_Return_%'].round(2).astype(str) + '%'
 
-    display(formatted_df)
-    formatted_df.to_csv('../data/monthly_returns.csv', index=False)
+    print(formatted_df)
+    formatted_df.to_csv(repo_root / 'data' / 'monthly_returns.csv', index=False)
     return
 
 
