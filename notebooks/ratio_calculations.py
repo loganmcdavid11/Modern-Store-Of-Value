@@ -22,6 +22,8 @@ def _():
     from pathlib import Path
     import sys
     import marimo as mo
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 
     # Detect environment to reliably find the project root
     if '__file__' in globals():
@@ -36,7 +38,7 @@ def _():
 
     from scripts.stooq_processor import StooqProcessor
 
-    return StooqProcessor, mo, np, pd, repo_root
+    return StooqProcessor, go, make_subplots, mo, np, pd, repo_root
 
 
 @app.cell(hide_code=True)
@@ -228,7 +230,8 @@ def _(clean_tbill, combined_data, np, pd, repo_root):
     # 6. Export
     print(results_df)
     results_df.to_csv(repo_root / 'data' / 'risk_adjusted_metrics.csv', index=False)
-    return
+    return (results_df,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -241,10 +244,7 @@ def _(mo):
 
 
 @app.cell
-def _(results_df):
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-
+def _(go, make_subplots, results_df):
     # 1. Prepare independent sorted dataframes for the leaderboards
     # We drop NaNs to avoid plotting errors if any asset had 0 downside volatility
     sharpe_df = results_df.dropna(subset=['Sharpe_Ratio']).sort_values('Sharpe_Ratio', ascending=True)
@@ -295,8 +295,8 @@ def _(results_df):
 
     # 7. Update Layout for a clean UI
     # Dynamic height scales based on how many tickers you pass through the cluster
-    dynamic_height = max(500, len(results_df) * 35) 
-    
+    dynamic_height = max(500, len(results_df) * 25) 
+
     fig.update_layout(
         title="Risk-Adjusted Performance Leaderboard (2021-2026)",
         height=dynamic_height,
@@ -304,12 +304,12 @@ def _(results_df):
         template="plotly_white",
         margin=dict(l=20, r=20, t=60, b=20)
     )
-    
+
     # Ensure axes have enough padding so the 'outside' text doesn't get clipped
     fig.update_xaxes(rangemode="tozero", row=1, col=1)
     fig.update_xaxes(rangemode="tozero", row=1, col=2)
+    return
 
-    return fig,
 
 if __name__ == "__main__":
     app.run()
