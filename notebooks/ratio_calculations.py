@@ -122,6 +122,8 @@ def _(category_map, pd, raw_data):
 
     combined_data = pd.concat(raw_data.values()).reset_index()
     combined_data['Date'] = pd.to_datetime(combined_data['Date'])
+
+    print(combined_data)
     return (combined_data,)
 
 
@@ -159,14 +161,16 @@ def _(pd, repo_root):
 
     # Isolate just the columns we need for the merge
     clean_tbill = tbill_data[['YearMonth', 'Monthly_RF_Rate']]
+
+    print(clean_tbill)
     return (clean_tbill,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### 6. The Calculation Engine (Matrix Math)
-    **Purpose:** Calculate the advanced risk-adjusted metrics across the entire dataset simultaneously.
+    ### 6. The Calculation Engine
+    **Purpose:** Calculate the various risk-adjusted metrics across the entire dataset simultaneously.
     **Implementation:** Sorts the pre-aggregated monthly data, merges the dynamic risk-free rate using the `YearMonth` key, calculates excess and downside returns, and applies the final matrix math to generate the metrics.
     """)
     return
@@ -194,14 +198,10 @@ def _(clean_tbill, combined_data, np, pd, repo_root):
     monthly_data['Excess_Return'] = monthly_data['Monthly_Return'] - monthly_data['Monthly_RF_Rate']
     monthly_data['Downside_Return'] = np.minimum(monthly_data['Excess_Return'], 0)
 
-    # 4. Extract VTI Baseline for Correlation
-    vti_returns = monthly_data[monthly_data['Ticker'] == 'VTI'].set_index('YearMonth')['Monthly_Return'].rename('VTI_Return')
-    monthly_data = monthly_data.join(vti_returns, on='YearMonth')
-
     # Drop the first NaN month caused by pct_change
     clean_monthly_data = monthly_data.dropna(subset=['Monthly_Return']).copy()
 
-    # 5. Vectorized Aggregation Function
+    # 4. Vectorized Aggregation Function
     def calculate_metrics(group):
         avg_monthly_return = group['Monthly_Return'].mean()
         avg_excess_return = group['Excess_Return'].mean()
@@ -210,27 +210,106 @@ def _(clean_tbill, combined_data, np, pd, repo_root):
         std_downside = group['Downside_Return'].std()
 
         # Prevent zero-division errors
-        sharpe = (avg_excess_return / std_excess) * np.sqrt(12) if std_excess > 0 else np.nan
-        sortino = (avg_excess_return / std_downside) * np.sqrt(12) if std_downside > 0 else np.nan
+        MONTHS = 12
+        sharpe = (avg_excess_return / std_excess) * np.sqrt(MONTHS) if std_excess > 0 else np.nan
+        sortino = (avg_excess_return / std_downside) * np.sqrt(MONTHS) if std_downside > 0 else np.nan
 
-        vti_corr = group['Monthly_Return'].corr(group['VTI_Return'])
 
         return pd.Series({
             'Annualized_Return_%': (avg_monthly_return * 12) * 100,
             'Sharpe_Ratio': sharpe,
-            'Sortino_Ratio': sortino,
-            'VTI_Correlation': vti_corr
+            'Sortino_Ratio': sortino
         })
 
-    # 6. Apply Math and Sort
+    # 5. Apply Math and Sort
     results_df = clean_monthly_data.groupby(['Ticker', 'Category']).apply(calculate_metrics).reset_index()
     results_df = results_df.sort_values(by='Sortino_Ratio', ascending=False).round(3)
 
-    # 7. Export
+    # 6. Export
     print(results_df)
     results_df.to_csv(repo_root / 'data' / 'risk_adjusted_metrics.csv', index=False)
     return
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 7. Visualization: Risk-Adjusted Leaderboard
+    **Purpose:** Visually compare the Sharpe and Sortino ratios across the dataset to quickly identify the ultimate stores of value.
+    **Implementation:** Generates side-by-side horizontal bar charts using Plotly. The data is sorted independently for each metric to create a true leaderboard structure, and the top-performing asset in each category is dynamically highlighted in gold.
+    """)
+    return
+
+
+@app.cell
+def _(results_df):
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    # 1. Prepare independent sorted dataframes for the leaderboards
+    # We drop NaNs to avoid plotting errors if any asset had 0 downside volatility
+    sharpe_df = results_df.dropna(subset=['Sharpe_Ratio']).sort_values('Sharpe_Ratio', ascending=True)
+    sortino_df = results_df.dropna(subset=['Sortino_Ratio']).sort_values('Sortino_Ratio', ascending=True)
+
+    # 2. Identify the winners (the last item in the ascending list)
+    max_sharpe_ticker = sharpe_df['Ticker'].iloc[-1] if not sharpe_df.empty else None
+    max_sortino_ticker = sortino_df['Ticker'].iloc[-1] if not sortino_df.empty else None
+
+    # 3. Create color arrays (Highlight winner in Gold, others in standard Plotly colors)
+    sharpe_colors = ['#FFD700' if t == max_sharpe_ticker else '#636EFA' for t in sharpe_df['Ticker']]
+    sortino_colors = ['#FFD700' if t == max_sortino_ticker else '#00CC96' for t in sortino_df['Ticker']]
+
+    # 4. Initialize the subplots
+    fig = make_subplots(
+        rows=1, cols=2, 
+        subplot_titles=("Sharpe Ratio (Total Volatility)", "Sortino Ratio (Downside Protection)"),
+        horizontal_spacing=0.15
+    )
+
+    # 5. Add Sharpe Trace
+    fig.add_trace(
+        go.Bar(
+            x=sharpe_df['Sharpe_Ratio'],
+            y=sharpe_df['Ticker'],
+            orientation='h',
+            marker_color=sharpe_colors,
+            text=sharpe_df['Sharpe_Ratio'].round(2),
+            textposition='outside',
+            hovertemplate="<b>%{y}</b><br>Sharpe: %{x:.2f}<extra></extra>"
+        ),
+        row=1, col=1
+    )
+
+    # 6. Add Sortino Trace
+    fig.add_trace(
+        go.Bar(
+            x=sortino_df['Sortino_Ratio'],
+            y=sortino_df['Ticker'],
+            orientation='h',
+            marker_color=sortino_colors,
+            text=sortino_df['Sortino_Ratio'].round(2),
+            textposition='outside',
+            hovertemplate="<b>%{y}</b><br>Sortino: %{x:.2f}<extra></extra>"
+        ),
+        row=1, col=2
+    )
+
+    # 7. Update Layout for a clean UI
+    # Dynamic height scales based on how many tickers you pass through the cluster
+    dynamic_height = max(500, len(results_df) * 35) 
+    
+    fig.update_layout(
+        title="Risk-Adjusted Performance Leaderboard (2021-2026)",
+        height=dynamic_height,
+        showlegend=False,
+        template="plotly_white",
+        margin=dict(l=20, r=20, t=60, b=20)
+    )
+    
+    # Ensure axes have enough padding so the 'outside' text doesn't get clipped
+    fig.update_xaxes(rangemode="tozero", row=1, col=1)
+    fig.update_xaxes(rangemode="tozero", row=1, col=2)
+
+    return fig,
 
 if __name__ == "__main__":
     app.run()
