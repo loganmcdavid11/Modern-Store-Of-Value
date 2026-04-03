@@ -498,5 +498,246 @@ def _(mo, results_df):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 11. Monthly Risk-Return Metrics
+    **Purpose:** Expose per-ticker monthly return statistics for the scatter plot.
+
+    `results_df` (computed in cell 6) already contains `Mean_Monthly_Return` and `Std_Monthly_Return` for every ticker. This cell aliases those columns so downstream cells have clearly named inputs.
+    """)
+    return
+
+
+@app.cell
+def _(results_df):
+    monthly_metrics = results_df[['Ticker', 'Category', 'Mean_Monthly_Return', 'Std_Monthly_Return']].copy()
+    print(monthly_metrics.sort_values('Mean_Monthly_Return', ascending=False).to_string(index=False))
+    return (monthly_metrics,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 12. Visualization: Monthly Risk-Return Scatter Plot
+    **Purpose:** Map every asset into risk-return space using monthly return statistics. Assets in the **lower-risk, higher-reward** quadrant are the strongest store-of-value candidates.
+
+    - **X-axis (Risk):** Std dev of monthly returns — higher = more volatile month-to-month.
+    - **Y-axis (Reward):** Mean monthly return over 2021–2026.
+    - Quadrant lines at the **median** risk and reward across the universe.
+    - Labels pushed radially outward from the plot center to minimize overlap.
+    """)
+    return
+
+
+@app.cell
+def _(CATEGORY_COLORS, go, monthly_metrics):
+    import math as _math
+
+    _df = monthly_metrics.dropna(subset=['Mean_Monthly_Return', 'Std_Monthly_Return']).copy()
+
+    _med_risk   = _df['Std_Monthly_Return'].median()
+    _med_reward = _df['Mean_Monthly_Return'].median()
+
+    PADDING = 0.35
+    _xspan = _df['Std_Monthly_Return'].max() - _df['Std_Monthly_Return'].min()
+    _yspan = _df['Mean_Monthly_Return'].max() - _df['Mean_Monthly_Return'].min()
+    _xr = [_df['Std_Monthly_Return'].min() - _xspan * PADDING,
+           _df['Std_Monthly_Return'].max() + _xspan * PADDING]
+    _yr = [_df['Mean_Monthly_Return'].min() - _yspan * PADDING,
+           _df['Mean_Monthly_Return'].max() + _yspan * PADDING]
+
+    fig_monthly_scatter = go.Figure()
+
+    for _cat, _grp in _df.groupby('Category'):
+        _color = CATEGORY_COLORS.get(_cat, '#636EFA')
+        fig_monthly_scatter.add_trace(go.Scatter(
+            x=_grp['Std_Monthly_Return'],
+            y=_grp['Mean_Monthly_Return'],
+            mode='markers',
+            name=_cat,
+            text=_grp['Ticker'],
+            marker=dict(size=10, color=_color, line=dict(width=1, color='white')),
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "Risk (σ): %{x:.4f}<br>"
+                "Reward (μ): %{y:.4f}<br>"
+                "<extra>" + _cat + "</extra>"
+            ),
+        ))
+
+    # Quadrant dividers
+    fig_monthly_scatter.add_shape(type="line",
+        x0=_med_risk, x1=_med_risk, y0=_yr[0], y1=_yr[1],
+        line=dict(color="gray", width=1, dash="dash"))
+    fig_monthly_scatter.add_shape(type="line",
+        x0=_xr[0], x1=_xr[1], y0=_med_reward, y1=_med_reward,
+        line=dict(color="gray", width=1, dash="dash"))
+
+    # Radial ticker labels
+    _OFFSET_PX = 40
+    for _, _row in _df.iterrows():
+        _dx = (_row['Std_Monthly_Return']  - _med_risk)   / (_xspan or 1)
+        _dy = (_row['Mean_Monthly_Return'] - _med_reward) / (_yspan or 1)
+        _mag = _math.sqrt(_dx ** 2 + _dy ** 2) or 1
+        _ax  =  (_dx / _mag) * _OFFSET_PX
+        _ay  = -(_dy / _mag) * _OFFSET_PX
+        fig_monthly_scatter.add_annotation(
+            x=_row['Std_Monthly_Return'],
+            y=_row['Mean_Monthly_Return'],
+            text=f"<b>{_row['Ticker']}</b>",
+            showarrow=True, arrowhead=0, arrowwidth=1, arrowcolor='#AAAAAA',
+            ax=_ax, ay=_ay,
+            font=dict(size=10),
+            bgcolor='rgba(255,255,255,0.7)',
+            borderpad=2,
+        )
+
+    # Quadrant corner labels
+    for _ql in [
+        dict(x=_xr[0], y=_yr[1], text="Low Risk, High Reward ▲", xa="left",  ya="top"),
+        dict(x=_xr[1], y=_yr[1], text="High Risk, High Reward ▲", xa="right", ya="top"),
+        dict(x=_xr[0], y=_yr[0], text="Low Risk, Low Reward ▼",  xa="left",  ya="bottom"),
+        dict(x=_xr[1], y=_yr[0], text="High Risk, Low Reward ▼", xa="right", ya="bottom"),
+    ]:
+        fig_monthly_scatter.add_annotation(
+            x=_ql['x'], y=_ql['y'], text=_ql['text'],
+            showarrow=False, font=dict(size=9, color="gray"),
+            xanchor=_ql['xa'], yanchor=_ql['ya'],
+        )
+
+    fig_monthly_scatter.update_layout(
+        title="Risk-Return Tradeoff — Monthly Returns (2021–2026)",
+        xaxis_title="Risk — Std Dev of Monthly Returns",
+        yaxis_title="Reward — Mean Monthly Return",
+        template="plotly_white",
+        legend=dict(title="Category", orientation="v", x=1.01, y=1),
+        margin=dict(l=60, r=200, t=60, b=60),
+    )
+    fig_monthly_scatter.update_xaxes(range=_xr)
+    fig_monthly_scatter.update_yaxes(range=_yr)
+
+    fig_monthly_scatter
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 13. Downside / Upside Capture by VTI Market Regime
+    **Purpose:** Classify every month as a "red month" (VTI return < 0) or a "green month" (VTI return ≥ 0), then compute each asset's average return within those two buckets.
+
+    **Interpretation:**
+    - A low (close to zero or negative) average in red months = strong downside resistance.
+    - A positive average in green months = meaningful upside participation.
+    - Ideal store-of-value candidates score well on *both*: they bleed little in downturns and still capture growth in rallies.
+    """)
+    return
+
+
+@app.cell
+def _(clean_monthly):
+    # 1. Isolate VTI's monthly returns as the market regime signal
+    vti_monthly = (
+        clean_monthly[clean_monthly['Ticker'] == 'VTI'][['Date', 'Monthly_Return']]
+        .rename(columns={'Monthly_Return': 'VTI_Return'})
+    )
+
+    # 2. Label each month
+    vti_monthly = vti_monthly.copy()
+    vti_monthly['Market'] = vti_monthly['VTI_Return'].apply(
+        lambda r: 'Green (VTI +)' if r >= 0 else 'Red (VTI −)'
+    )
+
+    # 3. Merge regime label onto every ticker's monthly returns
+    regime_data = clean_monthly.merge(
+        vti_monthly[['Date', 'Market']], on='Date', how='inner'
+    )
+
+    # 4. Average return per ticker × regime bucket
+    capture_df = (
+        regime_data.groupby(['Ticker', 'Category', 'Market'])['Monthly_Return']
+        .mean()
+        .reset_index()
+        .rename(columns={'Monthly_Return': 'Avg_Monthly_Return'})
+    )
+
+    # 5. Pivot so each row is one ticker with two columns
+    capture_wide = capture_df.pivot_table(
+        index=['Ticker', 'Category'],
+        columns='Market',
+        values='Avg_Monthly_Return',
+    ).reset_index()
+    capture_wide.columns.name = None
+
+    red_col   = 'Red (VTI −)'
+    green_col = 'Green (VTI +)'
+    capture_wide = capture_wide.sort_values(red_col, ascending=False)
+
+    print(capture_wide[['Ticker', 'Category', red_col, green_col]].round(4).to_string(index=False))
+    return capture_wide, red_col, green_col
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 14. Visualization: Average Return in Red vs Green VTI Months
+    """)
+    return
+
+
+@app.cell
+def _(capture_wide, go, red_col, green_col):
+    _df = capture_wide.sort_values(red_col, ascending=True).copy()
+
+    fig_capture = go.Figure()
+
+    # Red-month bars
+    fig_capture.add_trace(go.Bar(
+        name='Red Months (VTI −)',
+        x=_df[red_col],
+        y=_df['Ticker'],
+        orientation='h',
+        marker=dict(
+            color=_df[red_col].apply(lambda v: 'rgba(220,53,69,0.8)' if v < 0 else 'rgba(220,53,69,0.4)'),
+            line=dict(width=0),
+        ),
+        text=(_df[red_col] * 100).round(2).astype(str) + '%',
+        textposition='outside',
+        hovertemplate="<b>%{y}</b><br>Avg return (red months): %{x:.4f}<extra></extra>",
+    ))
+
+    # Green-month bars
+    fig_capture.add_trace(go.Bar(
+        name='Green Months (VTI +)',
+        x=_df[green_col],
+        y=_df['Ticker'],
+        orientation='h',
+        marker=dict(
+            color='rgba(40,167,69,0.7)',
+            line=dict(width=0),
+        ),
+        text=(_df[green_col] * 100).round(2).astype(str) + '%',
+        textposition='outside',
+        hovertemplate="<b>%{y}</b><br>Avg return (green months): %{x:.4f}<extra></extra>",
+    ))
+
+    fig_capture.add_vline(x=0, line_width=1, line_color='black', opacity=0.4)
+
+    _h = max(500, len(_df) * 32)
+    fig_capture.update_layout(
+        title='Average Monthly Return During VTI Red vs Green Months (2021–2026)',
+        xaxis_title='Average Monthly Return',
+        yaxis_title='',
+        barmode='group',
+        template='plotly_white',
+        height=_h,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        margin=dict(l=20, r=80, t=80, b=40),
+    )
+    fig_capture.update_xaxes(tickformat='.2%')
+
+    fig_capture
+
+
 if __name__ == "__main__":
     app.run()
