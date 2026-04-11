@@ -17,7 +17,9 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 1. Environment Setup")
+    mo.md("""
+    ### 1. Environment Setup
+    """)
     return
 
 
@@ -41,12 +43,14 @@ def _():
 
     from scripts.stooq_processor import StooqProcessor
 
-    return Path, StooqProcessor, go, make_subplots, mo, random, repo_root, sys
+    return StooqProcessor, go, make_subplots, mo, random, repo_root
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 2. Build Catalog")
+    mo.md("""
+    ### 2. Build Catalog
+    """)
     return
 
 
@@ -67,7 +71,9 @@ def _(StooqProcessor, repo_root):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 3. Catalog Breakdown")
+    mo.md("""
+    ### 3. Catalog Breakdown
+    """)
     return
 
 
@@ -95,18 +101,19 @@ def _(catalog, pd, total_tickers):
     print(crosstab)
     print("\nTop Buckets (sub-categories within exchange):")
     print(by_bucket.head(20).to_string(index=False))
-
-    return by_bucket, by_exchange, by_type, crosstab
+    return by_bucket, by_exchange, by_type
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 4. Catalog Visualizations")
+    mo.md("""
+    ### 4. Catalog Visualizations
+    """)
     return
 
 
 @app.cell
-def _(by_bucket, by_exchange, by_type, go, make_subplots, total_tickers):
+def _(by_exchange, by_type, go, make_subplots, total_tickers):
     EXCHANGE_COLORS = {
         "nasdaq":  "#636EFA",
         "nyse":    "#00CC96",
@@ -146,6 +153,7 @@ def _(by_bucket, by_exchange, by_type, go, make_subplots, total_tickers):
         showlegend=False,
     )
     fig_cat
+    return (EXCHANGE_COLORS,)
 
 
 @app.cell
@@ -178,13 +186,14 @@ def _(by_bucket, go):
         margin=dict(l=300, r=80, t=60, b=40),
     )
     fig_buckets
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### 5. Price Data Sample — Date Ranges & Row Counts
-    Reading every ticker's price file would take many minutes. Instead, we draw a **random sample of 300 tickers** (stratified by exchange × instrument type) and read their daily data to estimate date-range coverage and data density across the archive.
+    Reading every ticker's price file would take many minutes. Instead, we draw a **random sample of tickers** (stratified by exchange × instrument type) and read their daily data to estimate date-range coverage and data density across the archive.
     """)
     return
 
@@ -192,45 +201,66 @@ def _(mo):
 @app.cell
 def _(catalog, pd, processor, random):
     random.seed(42)
-    SAMPLE_N = 300
+    SAMPLE_N = 3000
 
     # Stratified sample: proportional within each exchange × type group
     sample_rows = (
         catalog.groupby(["exchange", "instrument_type"], group_keys=False)
-        .apply(lambda g: g.sample(min(len(g), max(1, round(SAMPLE_N * len(g) / len(catalog)))), random_state=42))
+        .apply(
+            lambda g: g.sample(
+                min(len(g), max(1, round(SAMPLE_N * len(g) / len(catalog)))),
+                random_state=42,
+            )
+        )
+        .reset_index(drop=True)
     )
     sample_tickers = sample_rows["symbol"].tolist()[:SAMPLE_N]
 
+    # Pre-build a lookup dict so we never re-index a grouped DataFrame inside the loop
+    ticker_meta = (
+        catalog.set_index("symbol")[["exchange", "instrument_type", "bucket"]]
+        .to_dict("index")
+    )
+
     sample_stats = []
+    errors = []
     for _sym in sample_tickers:
         try:
-            _info = sample_rows[sample_rows["symbol"] == _sym].iloc[0]
             _df = processor.download([_sym], interval="1d")[_sym]
             if _df.empty:
                 continue
+            _meta = ticker_meta[_sym]
             sample_stats.append({
                 "symbol":          _sym,
-                "exchange":        _info["exchange"],
-                "instrument_type": _info["instrument_type"],
-                "bucket":          _info["bucket"],
+                "exchange":        _meta["exchange"],
+                "instrument_type": _meta["instrument_type"],
+                "bucket":          _meta["bucket"],
                 "first_date":      _df.index.min(),
                 "last_date":       _df.index.max(),
                 "row_count":       len(_df),
                 "years_covered":   (_df.index.max() - _df.index.min()).days / 365.25,
                 "null_close_pct":  _df["Close"].isna().mean() * 100,
             })
-        except Exception:
-            pass
+        except Exception as _e:
+            errors.append((_sym, str(_e)))
+
+    if errors:
+        print(f"{len(errors)} errors (first 5):")
+        for _sym, _msg in errors[:5]:
+            print(f"  {_sym}: {_msg}")
 
     sample_df = pd.DataFrame(sample_stats)
-    print(f"Successfully sampled {len(sample_df)} tickers")
-    print(sample_df[["symbol", "exchange", "instrument_type", "first_date", "last_date", "row_count", "years_covered"]].describe())
-    return sample_df, sample_tickers, SAMPLE_N
+    print(f"\nSuccessfully sampled {len(sample_df)} / {len(sample_tickers)} tickers")
+    if not sample_df.empty:
+        print(sample_df[["years_covered", "row_count"]].describe().round(1))
+    return SAMPLE_N, sample_df
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 6. Sample Visualizations — Coverage & Density")
+    mo.md("""
+    ### 6. Sample Visualizations — Coverage & Density
+    """)
     return
 
 
@@ -266,6 +296,7 @@ def _(go, make_subplots, sample_df):
         showlegend=False,
     )
     fig_cov
+    return
 
 
 @app.cell
@@ -288,6 +319,7 @@ def _(EXCHANGE_COLORS, go, sample_df):
         height=400,
     )
     fig_box
+    return
 
 
 @app.cell
@@ -319,17 +351,22 @@ def _(go, sample_df):
         legend=dict(title="Type"),
     )
     fig_dates
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 7. Summary Statistics Table")
+    mo.md("""
+    ### 7. Summary Statistics Table
+    """)
     return
 
 
 @app.cell
 def _(SAMPLE_N, mo, sample_df, total_tickers):
-    _stats = sample_df[["years_covered", "row_count", "null_close_pct"]]
+    if sample_df.empty:
+        mo.md("⚠️ No sample data — check cell 5 output for errors.")
+    _stats = sample_df[["years_covered", "row_count", "null_close_pct"]] if not sample_df.empty else None
 
     mo.md(f"""
     ## Stooq Archive — Summary Report
@@ -348,6 +385,7 @@ def _(SAMPLE_N, mo, sample_df, total_tickers):
     | **Earliest first date (sample)** | {sample_df['first_date'].min().date()} |
     | **Latest last date (sample)** | {sample_df['last_date'].max().date()} |
     """)
+    return
 
 
 if __name__ == "__main__":
