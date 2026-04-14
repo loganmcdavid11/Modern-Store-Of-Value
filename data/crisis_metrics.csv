@@ -1,0 +1,24 @@
+Asset_Name,Category,Raw_Mean_Stress_Score,Normalized_Crisis_Score_1_10
+DBA,Commodity ETFs (Agriculture),7.705,10.0
+GLD,Commodity ETFs (Metals),18.122500000000002,9.59
+PPLT,Commodity ETFs (Metals),33.075,9.18
+XLU,Sector ETFs,39.1625,8.77
+WMT,Individual Stocks,43.8925,8.36
+BITW,Crypto ETFs,53.51,7.95
+SOYB,Commodity ETFs (Agriculture),56.1575,7.55
+IBIT,Crypto ETFs,56.185,7.14
+JNJ,Individual Stocks,66.575,6.73
+SLV,Commodity ETFs (Metals),66.735,6.32
+MSFT,Individual Stocks,84.2975,5.91
+SPY,Broad Market ETFs,92.37,5.5
+AAPL,Individual Stocks,93.4075,5.09
+VTI,Broad Market ETFs,96.69,4.68
+WEAT,Commodity ETFs (Agriculture),107.8775,4.27
+PALL,Commodity ETFs (Metals),126.0675,3.86
+ETHA,Crypto ETFs,129.81,3.45
+NVDA,Individual Stocks,158.4175,3.05
+LOW,Individual Stocks,179.58249999999998,2.64
+AMZN,Individual Stocks,181.98499999999999,2.23
+HD,Individual Stocks,190.995,1.82
+AMD,Individual Stocks,224.01500000000001,1.41
+TSLA,Individual Stocks,257.3075,1.0

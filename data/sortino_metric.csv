@@ -1,0 +1,24 @@
+Asset_Name,Category,Sortino_Ratio,Normalized_Sortino_Score_1_10
+NVDA,Individual Stocks,2.5954,10.0
+WMT,Individual Stocks,1.7547,9.59
+GLD,Commodity ETFs (Metals),1.5579,9.18
+IBIT,Crypto ETFs,1.2835,8.77
+DBA,Commodity ETFs (Agriculture),1.1813,8.36
+AMD,Individual Stocks,1.1723,7.95
+SLV,Commodity ETFs (Metals),1.1576,7.55
+SPY,Broad Market ETFs,1.1331,7.14
+AAPL,Individual Stocks,1.0685,6.73
+XLU,Sector ETFs,0.9013,6.32
+VTI,Broad Market ETFs,0.8992,5.91
+MSFT,Individual Stocks,0.7662,5.5
+JNJ,Individual Stocks,0.7517,5.09
+PPLT,Commodity ETFs (Metals),0.7193,4.68
+TSLA,Individual Stocks,0.7008,4.27
+LOW,Individual Stocks,0.581,3.86
+AMZN,Individual Stocks,0.3827,3.45
+HD,Individual Stocks,0.3121,3.05
+SOYB,Commodity ETFs (Agriculture),0.1888,2.64
+ETHA,Crypto ETFs,-0.1287,2.23
+PALL,Commodity ETFs (Metals),-0.387,1.82
+WEAT,Commodity ETFs (Agriculture),-0.4704,1.41
+BITW,Crypto ETFs,-2.37,1.0
