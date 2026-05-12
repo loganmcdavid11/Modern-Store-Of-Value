@@ -1,6 +1,8 @@
 # Modern-Store-Of-Value
 Advanced Data Science Project 
 
+To see research and results, view `research_poster` and `modern_store_of_value_presentaion`.
+
  
 ## Getting Started
  
